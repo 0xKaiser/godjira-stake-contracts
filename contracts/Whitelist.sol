@@ -11,9 +11,9 @@ contract WhitelistChecker is EIP712Upgradeable {
     struct whitelisted {
         address whiteListAddress;
         uint256 genTokenId;
-        uint256 genMultiplier;
-        uint256[3] gen2TokenIds;
-        uint256[3] gen2Rates;
+        string genMultiplier;
+        uint256[] gen2TokenIds;
+        string[] gen2Earnings;
         bytes signature;
     }
 
@@ -34,12 +34,12 @@ contract WhitelistChecker is EIP712Upgradeable {
         return _hashTypedDataV4(
             keccak256(
                 abi.encode(
-                    keccak256("whitelisted(address whiteListAddress,uint256 genTokenId,uint256 genMultiplier,uint256[3] gen2TokenIds,uint256[3] gen2Rates)"),
+                    keccak256("whitelisted(address whiteListAddress,uint256 genTokenId,string genMultiplier,uint256[] gen2TokenIds,string[] gen2Earnings)"),
                     list.whiteListAddress,
                     list.genTokenId,
                     list.genMultiplier,
-                    list.gen2TokenIds,
-                    list.gen2Rates
+                    keccak256(abi.encode(list.gen2TokenIds)),
+                    keccak256(abi.encode(list.gen2Earnings))
                 )
             )
         );

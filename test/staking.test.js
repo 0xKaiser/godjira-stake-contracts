@@ -59,21 +59,31 @@ describe('Staking', () => {
 
   it('stake function succeeds', async () => {
     await advanceTime(5 * 3600 * 24)
-    const whitelist = new Whitelist({ contract: this.proxyUpgraded, signer: this.users[1] })
-    const whitelisted = await whitelist.createWhiteList(this.users[1].address, 10, 1, [1, 2, 3], [1, 2, 3])
-    console.log(whitelisted)
+    // const whitelist = new Whitelist({ contract: this.stakingV1, signer: this.users[1] })
+    // const whitelisted = await whitelist.createWhiteList(this.users[1].address, 10, 1, [1, 2, 3], [1, 2, 3])
+
+    const stakeInfo = [
+      {
+        genTokenId: ethers.utils.parseUnits('10', 18),
+        genRarity: ethers.utils.parseUnits('1', 18),
+        gen2TokenIds: [ethers.utils.parseUnits('1', 18), ethers.utils.parseUnits('2', 18), ethers.utils.parseUnits('3', 18)],
+        gen2Rarities: [ethers.utils.parseUnits('1', 18), ethers.utils.parseUnits('2', 18), ethers.utils.parseUnits('3', 18)]
+      }
+    ]
+
     await this.proxyUpgraded.connect(this.deployer).modifySigner(this.users[1].address)
-    await this.proxyUpgraded.connect(this.users[1]).stake(whitelisted)
-    return
-    const owner = await this.skyIsland.ownerOf(500)
-    expect(owner).to.equal(this.users[2].address)
+
+    await this.genesis.connect(this.users[1]).approve(this.proxyUpgraded.address, 10)
+    await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 1)
+    await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 2)
+    await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 3)
     
-    await this.skyIsland.connect(this.users[2]).approve(this.proxyUpgraded.address, 500)
-    const tx = await this.proxyUpgraded.connect(this.users[2]).stake([500])
-    const rc = await tx.wait();
-    const event = rc.events.find(event => event.event === 'Staked');
-    const getStakingTokedId = await this.proxyUpgraded.stakeInfos(event.args.ticketNumbers[0])
-    expect(500).to.equal(getStakingTokedId.tokenId)
+    
+    const tx = await this.proxyUpgraded.connect(this.users[1]).stake(stakeInfo)
+    const rc = await tx.wait()
+    const event = rc.events.find(event => event.event === 'Staked')
+    const getStakingInfo = await this.proxyUpgraded.stakeInfos(event.args.ticketId)
+    expect(10).to.equal(getStakingInfo.genesisTokenId)
   })
 
   return;
