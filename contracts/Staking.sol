@@ -74,7 +74,7 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		// console.log(getSigner(whitelist));
 		// require(getSigner(whitelist) == designatedSigner,"Invalid signature");
     // require(msg.sender == whitelist.whiteListAddress,"not same user");
-		return;
+
 		for (uint256 i = 0; i < _stakeInfos.length; i++) {
 			if(_stakeInfos[i].genTokenId != 0) {
 				require(msg.sender == genesis.ownerOf(_stakeInfos[i].genTokenId), "Not genesis owner");
@@ -145,7 +145,7 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	function _calculateStakeReward(uint256 _bagId) internal view returns (uint256) {
 		uint256 period = ((block.timestamp - stakeInfos[_bagId].since) / 1 days);
 		uint256 baseEarning = 0;
-		uint256 gen2RateMultiplier = gen2RateMultipliers[stakeInfos[_bagId].gen2TokenIds.length];
+		uint256 gen2TokenLen = stakeInfos[_bagId].gen2TokenIds.length;
 		uint256 genesisRateMultiplier = 1;
 
 		if(stakeInfos[_bagId].genRarity != 0) {
@@ -156,7 +156,18 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 			baseEarning += gen2Earnings[stakeInfos[_bagId].gen2Rarities[i]];
 		}
 
-    return baseEarning * gen2RateMultiplier * genesisRateMultiplier * period;
+		uint256 total = 0;
+		if(gen2TokenLen <= 1) {
+			total = baseEarning * genesisRateMultiplier * period;
+		}
+		else if(gen2TokenLen == 2) {
+			total = (baseEarning * genesisRateMultiplier * period) * 21 / 20 ;
+		}
+		else if(gen2TokenLen == 3) {
+			total = (baseEarning * genesisRateMultiplier * period) * 23 / 20 ;
+		} 
+
+    return total;
   }
 
 	function getStakeReward() public view returns (uint256) {

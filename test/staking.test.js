@@ -3,8 +3,6 @@ const { ethers, artifacts } = require("hardhat")
 const { advanceTime } = require('./utils')
 const { Whitelist } = require('../lib')
 
-const tokenPrice = ethers.utils.parseUnits('0.1', 18);
-
 describe('Staking', () => {
   
   before(async () => {
@@ -62,12 +60,13 @@ describe('Staking', () => {
     // const whitelist = new Whitelist({ contract: this.stakingV1, signer: this.users[1] })
     // const whitelisted = await whitelist.createWhiteList(this.users[1].address, 10, 1, [1, 2, 3], [1, 2, 3])
 
-    const stakeInfo = [
-      {
-        genTokenId: ethers.utils.parseUnits('10', 18),
-        genRarity: ethers.utils.parseUnits('1', 18),
-        gen2TokenIds: [ethers.utils.parseUnits('1', 18), ethers.utils.parseUnits('2', 18), ethers.utils.parseUnits('3', 18)],
-        gen2Rarities: [ethers.utils.parseUnits('1', 18), ethers.utils.parseUnits('2', 18), ethers.utils.parseUnits('3', 18)]
+    const stakeInfo =
+    [  {
+        genTokenId: 10,
+        genRarity: 1,
+        gen2TokenIds: [1,2,3],
+        gen2Rarities: [1,2,3],
+        since: 0
       }
     ]
 
@@ -82,48 +81,38 @@ describe('Staking', () => {
     const tx = await this.proxyUpgraded.connect(this.users[1]).stake(stakeInfo)
     const rc = await tx.wait()
     const event = rc.events.find(event => event.event === 'Staked')
-    const getStakingInfo = await this.proxyUpgraded.stakeInfos(event.args.ticketId)
-    expect(10).to.equal(getStakingInfo.genesisTokenId)
+    const getStakingInfo = await this.proxyUpgraded.stakeInfos(event.args.bagId)
+    expect(ethers.BigNumber.from("10")).to.equal(getStakingInfo.genTokenId)
   })
 
-  return;
   it('claim function succeeds', async () => {
     await advanceTime(5 * 3600 * 24)
     
-    await this.proxyUpgraded.connect(this.users[2]).claim(1, 2000)
-    const balance = await this.skyVerseToken.balanceOf(this.users[2].address)
-    expect(2000).to.equal(balance)
+    await this.proxyUpgraded.connect(this.users[1]).claim(1, 100)
+    const balance = await this.jiraToken.balanceOf(this.users[1].address)
+    expect(100).to.equal(balance)
 
-    await this.proxyUpgraded.connect(this.users[2]).claim(1, 1000)
-    const balance1 = await this.skyVerseToken.balanceOf(this.users[2].address)
-    expect(3000).to.equal(balance1)
+    await this.proxyUpgraded.connect(this.users[1]).claim(1, 10)
+    const balance1 = await this.jiraToken.balanceOf(this.users[1].address)
+    expect(110).to.equal(balance1)
     
-    const getReward = await this.proxyUpgraded.connect(this.users[2]).getStakeReward()
-    expect(2000).to.equal(getReward)
+    const getReward = await this.proxyUpgraded.connect(this.users[1]).getStakeReward()
+    expect(97).to.equal(getReward)
   })
 
-  it('claim function succeeds', async () => {
-    await this.proxyUpgraded.connect(this.users[2]).claimAll()
-    const balance = await this.skyVerseToken.balanceOf(this.users[2].address)
-    expect(5000).to.equal(balance)
+  it('claimAll function succeeds', async () => {
+    await this.proxyUpgraded.connect(this.users[1]).claimAll()
+    const balance = await this.jiraToken.balanceOf(this.users[1].address)
+    expect(207).to.equal(balance)
 
     const getReward = await this.proxyUpgraded.connect(this.users[2]).getStakeReward()
     expect(0).to.equal(getReward)
   })
 
+  
   it('unStake function succeeds', async () => {
-    await this.proxyUpgraded.connect(this.users[2]).unStake([1])
-    const owner = await this.skyIsland.ownerOf(500)
-    expect(this.users[2].address).to.equal(owner)
-  })
-
-  it('mint + stake function succeeds', async () => {
-    await advanceTime(5 * 3600 * 24)
-    const whitelist = new Whitelist({ contract: this.skyIsland, signer: this.users[3] })
-    const whitelisted = await whitelist.createWhiteList(this.users[3].address, 501, 1)
-    await this.skyIsland.connect(this.deployer).modifySigner(this.users[3].address)
-    await this.skyIsland.connect(this.users[3]).mint(whitelisted, true, {value: tokenPrice})
-    const owner = await this.skyIsland.ownerOf(501)
-    expect(owner).to.equal(this.proxyUpgraded.address)
+    await this.proxyUpgraded.connect(this.users[1]).unStake([1])
+    const owner = await this.genesis.ownerOf(10)
+    expect(this.users[1].address).to.equal(owner)
   })
 })
