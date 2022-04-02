@@ -14,7 +14,6 @@ import "./interfaces/IJiraToken.sol";
 import "hardhat/console.sol";
 
 contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable, ERC721EnumerableUpgradeable, IERC721ReceiverUpgradeable {
-// contract Staking is Initializable, WhitelistChecker, ReentrancyGuardUpgradeable, OwnableUpgradeable, ERC721EnumerableUpgradeable, IERC721ReceiverUpgradeable {
 	using CountersUpgradeable for CountersUpgradeable.Counter;
 	using ECDSAUpgradeable for bytes;
   CountersUpgradeable.Counter private bagIds;
@@ -70,11 +69,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	}
 
 	function stake(StakeInfo[] memory _stakeInfos) external nonReentrant {
-	// function stake(whitelisted memory whitelist) external nonReentrant {
-		// console.log(getSigner(whitelist));
-		// require(getSigner(whitelist) == designatedSigner,"Invalid signature");
-    // require(msg.sender == whitelist.whiteListAddress,"not same user");
-
 		for (uint256 i = 0; i < _stakeInfos.length; i++) {
 			if(_stakeInfos[i].genTokenId != 0) {
 				require(msg.sender == genesis.ownerOf(_stakeInfos[i].genTokenId), "Not genesis owner");
