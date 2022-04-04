@@ -66,6 +66,7 @@ describe('Staking', () => {
         genRarity: 1,
         gen2TokenIds: [1,2,3],
         gen2Rarities: [1,2,3],
+        reward: 0,
         since: 0
       }
     ]
@@ -114,5 +115,35 @@ describe('Staking', () => {
     await this.proxyUpgraded.connect(this.users[1]).unStake([1])
     const owner = await this.genesis.ownerOf(10)
     expect(this.users[1].address).to.equal(owner)
+  })
+
+  it('addBagInfo function succeeds', async () => {
+    const stakeInfo =
+    [  {
+        genTokenId: 20,
+        genRarity: 2,
+        gen2TokenIds: [4],
+        gen2Rarities: [3],
+        reward: 0,
+        since: 0
+      }
+    ]
+
+    await this.proxyUpgraded.connect(this.deployer).modifySigner(this.users[1].address)
+
+    await this.genesis.connect(this.users[1]).approve(this.proxyUpgraded.address, 20)
+    await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 4)
+    
+    await this.proxyUpgraded.connect(this.users[1]).stake(stakeInfo)
+
+    await advanceTime(5 * 3600 * 24)
+  
+    await this.proxyUpgraded.connect(this.users[1]).addBagInfo(2, [5, 6], [1, 2])
+
+    await advanceTime(5 * 3600 * 24)
+    await this.proxyUpgraded.connect(this.users[1]).claimAll()
+    const balance = await this.jiraToken.balanceOf(this.users[1].address)
+
+    expect(948).to.equal(balance)
   })
 })
