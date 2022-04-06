@@ -111,7 +111,7 @@ describe('Staking', () => {
   })
 
   it('unStake function succeeds', async () => {
-    await this.proxyUpgraded.connect(this.users[1]).unStake(10, [1, 2, 3, 1])
+    await this.proxyUpgraded.connect(this.users[1]).unStake([10], [1, 2, 3, 1])
     const owner = await this.gen2.ownerOf(1)
     expect(this.users[1].address).to.equal(owner)
 
@@ -140,12 +140,21 @@ describe('Staking', () => {
 
     await advanceTime(5 * 3600 * 24)
   
-    await this.proxyUpgraded.connect(this.users[1]).addBagInfo(2, 10, [5, 6], [1, 2])
+    const addBagInfos = [
+      {
+        bagId: 2,
+		    genTokenId: 10,
+		    genRarity: 2,
+		    gen2TokenIds: [5, 6],
+		    gen2Rarities: [1, 2]
+      }
+    ]
+    await this.proxyUpgraded.connect(this.users[1]).addBagInfo(addBagInfos)
 
     await advanceTime(5 * 3600 * 24)
     await this.proxyUpgraded.connect(this.users[1]).claimAll()
     const balance = await this.jiraToken.balanceOf(this.users[1].address)
 
-    expect(948).to.equal(balance)
+    expect(637).to.equal(balance)
   })
 })
