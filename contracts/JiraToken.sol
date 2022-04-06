@@ -12,6 +12,7 @@ contract JiraToken is ERC20, Ownable {
     uint8 public _decimals = 18;
     string public _name = 'Jira Token';
     string public _symbol = 'JIRA';
+    uint256 CAP = 2 * 10 ** 8 * 1e18;
 
     constructor() ERC20(_name, _symbol) {
 
@@ -24,11 +25,13 @@ contract JiraToken is ERC20, Ownable {
     
     function mint(address _to, uint256 _amount) external onlyStaking {
         require(_amount != 0, "Invalid amount");
+        require(totalSupply() + _amount <= CAP, "Max limit");
         _mint(_to, _amount);
     }
 
     function mintOnlyOwner(address _to, uint256 _amount) external onlyOwner {
         require(_amount != 0, "Invalid amount");
+        require(totalSupply() + _amount <= CAP, "Max limit");
         _mint(_to, _amount);
     }
 
