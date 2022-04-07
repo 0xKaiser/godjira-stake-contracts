@@ -21,36 +21,35 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	IERC721Upgradeable public gen2;
 	IJiraToken public rewardsToken;
 
-	struct StakeInfo {
+	struct Bag {
 		uint256 genTokenId;
 		uint256 genRarity;
 		uint256[] gen2TokenIds;
 		uint256[] gen2Rarities;
-		uint256 reward;
-		uint256 since;
+		uint256 unclaimedBalance;
+		uint256 lastStateChange;
 	}
 
-	// Add bagInfo
-	struct BagInfo {
-		uint256 bagId;
-		uint256 genTokenId;
-		uint256 genRarity;
-		uint256[] gen2TokenIds;
-		uint256[] gen2Rarities;
+	struct genTokenId {
+		uint256 id;
+	}
+
+	struct gen2TokenId {
+		uint256[] ids;
 	}
 
 	address private _designatedSigner;
+	uint256 private genCap;
+	uint256 private gen2Cap;
 
 	/// @dev bagId -> Stake info
-  mapping(uint256 => StakeInfo) public stakeInfos;
+  mapping(uint256 => Bag) public bags;
 
 	/// @dev gen token id => bag id
   mapping(uint256 => uint256) public genBagIds;
   /// @dev gen2 token id => bag id
   mapping(uint256 => uint256) public gen2BagIds;
 
-	mapping(address => uint256) private _balances;
-	mapping(address => uint256) public claims;
 	mapping(uint256 => uint256) public claimBags;
 	mapping(uint256 => uint256) public genMultipliers;
 	mapping(uint256 => uint256) public gen2Earnings;
@@ -61,7 +60,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	event UnStaked(address indexed user, uint256 bagId, uint256 reward);
 	event Claimed(address indexed user, uint256 bagId, uint256 reward);
 	event AddBagInfo(address indexed user, uint256 bagId);
-	event ClaimedAll(address indexed user, uint256 reward);
 
 	function initialize(address _genesis, address _gen2, address _rewardsToken) initializer public {
 		__ERC721_init("GenStaking", "GS");
@@ -81,210 +79,200 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		gen2RateMultipliers[1] = 1;
 		gen2RateMultipliers[2] = uint256(21) / uint256(20);
 		gen2RateMultipliers[3] = uint256(23) / uint256(20);
+
+		genCap = 334;
+		gen2Cap = 3333;
 	}
 
-	function stake(StakeInfo[] memory _stakeInfos) external nonReentrant {
-		for (uint256 i = 0; i < _stakeInfos.length; i++) {
-			if(_stakeInfos[i].genTokenId != 0) {
-				require(msg.sender == genesis.ownerOf(_stakeInfos[i].genTokenId), "Not genesis owner");
-				genesis.safeTransferFrom(msg.sender, address(this), _stakeInfos[i].genTokenId);
-			}
-			
-			uint256 _gen2TokenCount = _stakeInfos[i].gen2TokenIds.length;
-			require(_gen2TokenCount <= 3, "Gen2 shouldn't be more than 3");
-			
-			bagIds.increment();
-			uint256 bagId = bagIds.current();
-			_safeMint(msg.sender, bagId);
-			
-			if(_stakeInfos[i].genTokenId != 0) {
-				genBagIds[_stakeInfos[i].genTokenId] = bagId;
-			}
+	function stake(
+		Bag[] memory _bags,
+		bool[] memory isNew,
+		uint256[] memory _bagIds
+	) external nonReentrant {
+		uint256 totalBags = _bagIds.length;
+		require(totalBags == _bags.length);
+		require(totalBags == isNew.length);
 
-			for (uint256 j = 0; j < _gen2TokenCount; j++) {
-				uint256 gen2TokenId = _stakeInfos[i].gen2TokenIds[j];
-				require(gen2TokenId != 0, "invalid gen2 tokenId");
-				require(msg.sender == gen2.ownerOf(gen2TokenId), "Not gen2 owner");
-				gen2BagIds[gen2TokenId] = bagId;
-				gen2.safeTransferFrom(msg.sender, address(this), gen2TokenId);
+		for (uint256 i = 0; i < _bags.length; i++) {
+			if (isNew[i]) {
+				_addNewBag(_bags[i].genTokenId, _bags[i].genRarity, _bags[i].gen2TokenIds, _bags[i].gen2Rarities);
 			}
-
-			stakeInfos[bagId] = StakeInfo({
-				genTokenId: _stakeInfos[i].genTokenId,
-				gen2TokenIds: _stakeInfos[i].gen2TokenIds,
-				genRarity: _stakeInfos[i].genRarity,
-				gen2Rarities: _stakeInfos[i].gen2Rarities,
-				reward: 0,
-				since: block.timestamp
-			});
-			
-			emit Staked(msg.sender,	bagId);
+			else {
+				_addToBag(_bagIds[i], _bags[i].genTokenId, _bags[i].genRarity, _bags[i].gen2TokenIds, _bags[i].gen2Rarities);
+			}
 		}
 	}
 
-	function addBagInfo(BagInfo[] memory _bagInfos) external nonReentrant {
-		for(uint256 i = 0; i < _bagInfos.length; i++ ) {
-			uint256 exsistGen2Count = stakeInfos[_bagInfos[i].bagId].gen2TokenIds.length;
-			uint256 _gen2Count = _bagInfos[i].gen2TokenIds.length;
-			require(_gen2Count == _bagInfos[i].gen2Rarities.length);
-			require((exsistGen2Count + _gen2Count) <= 3, "Can't add gen2 more than 3");
-			
-			uint256 getReward = _calculateStakeReward(_bagInfos[i].bagId) - claimBags[_bagInfos[i].bagId];
-			stakeInfos[_bagInfos[i].bagId].reward += getReward;
-
-			if(
-				stakeInfos[_bagInfos[i].bagId].genTokenId == 0 &&
-				_bagInfos[i].genTokenId != 0 &&
-				_bagInfos[i].genRarity != 0
-			) {
-				stakeInfos[_bagInfos[i].bagId].genTokenId = _bagInfos[i].genTokenId;
-				stakeInfos[_bagInfos[i].bagId].genRarity = _bagInfos[i].genRarity;
-			}
-			
-			for (uint256 j = 0; j < _gen2Count; j++) {
-				stakeInfos[_bagInfos[i].bagId].gen2TokenIds.push(_bagInfos[i].gen2TokenIds[j]);
-				stakeInfos[_bagInfos[i].bagId].gen2Rarities.push(_bagInfos[i].gen2Rarities[j]);
-			}
-
-			stakeInfos[_bagInfos[i].bagId].since = block.timestamp;
-			emit AddBagInfo(msg.sender, _bagInfos[i].bagId);
+	function _addNewBag(
+		uint256 _genTokenId,
+		uint256 _genTokenRarity,
+		uint256[] memory _gen2TokenIds,
+		uint256[] memory _gen2Rarities
+	) internal {
+		uint256 _gen2TokenCount = _gen2TokenIds.length;
+		require(_gen2TokenIds.length <= 3, "can't add more than 3 gen2s");
+				
+		bagIds.increment();
+		uint256 bagId = bagIds.current();
+				
+		if(_genTokenId != 0 && _genTokenId < genCap) {
+			require(msg.sender == genesis.ownerOf(_genTokenId), "not owner of the genesis");
+			genesis.safeTransferFrom(msg.sender, address(this), _genTokenId);
+			genBagIds[_genTokenId] = bagId;
 		}
+
+		for (uint256 i = 0; i < _gen2TokenCount; i++) {
+			require(msg.sender == gen2.ownerOf(_gen2TokenIds[i]), "not owner of the gen2");
+			gen2.safeTransferFrom(msg.sender, address(this), _gen2TokenIds[i]);
+			gen2BagIds[_gen2TokenIds[i]] = bagId;
+		}
+
+		bags[bagId] = Bag({
+			genTokenId: _genTokenId,
+			gen2TokenIds: _gen2TokenIds,
+			genRarity: _genTokenRarity,
+			gen2Rarities: _gen2Rarities,
+			unclaimedBalance: 0,
+			lastStateChange: block.timestamp
+		});
+		_safeMint(msg.sender, bagId);
+	
+		emit Staked(msg.sender, bagId);                  
 	}
 
-	function unStake(uint256[] memory _genTokenIds, uint256[] memory _gen2TokenIds) external nonReentrant {
-		uint256 gen2TokenCount = _gen2TokenIds.length;
-		uint256 genTokenCount = _genTokenIds.length;
-		require(genTokenCount != 0 || gen2TokenCount != 0, "Invalid args");
-
-		if(genTokenCount != 0) {
-			for(uint256 i = 0; i < genTokenCount; i++ ) {
-				uint256 _genTokenId = _genTokenIds[i];
-				uint256 bagId = genBagIds[_genTokenId];
-				require(msg.sender == ownerOf(bagId), "Not bag owner");
-				genesis.safeTransferFrom(address(this), msg.sender, _genTokenId);
-				stakeInfos[bagId].genTokenId = 0;
-			}
+	function _addToBag(
+		uint256 _bagId,
+		uint256 _genTokenId,
+		uint256 _genTokenRarity,
+		uint256[] memory _gen2TokenIds,
+		uint256[] memory _gen2Rarities
+	) internal {
+		uint256 currentGen2Count = bags[_bagId].gen2TokenIds.length;
+		uint256 _gen2Count = _gen2TokenIds.length;
+		
+		require((currentGen2Count + _gen2Count) <= 3, "can't add more than 3 gen2s");
+		
+		uint256 _unclaimed = _calculateStakeReward(_bagId);
+		bags[_bagId].unclaimedBalance += _unclaimed;
+		if (_genTokenId < genCap && _genTokenId != 0) {
+			require(bags[_bagId].genTokenId >= genCap || bags[_bagId].genTokenId == 0, "bag already has a genesis");
+			bags[_bagId].genTokenId = _genTokenId;
+			bags[_bagId].genRarity = _genTokenRarity;
 		}
+				
+		for (uint256 i = 0; i < _gen2Count; i++) {
+			require(gen2BagIds[_gen2TokenIds[i]] == 0);
+			require(_gen2TokenIds[i] < gen2Cap);
+			bags[_bagId].gen2TokenIds.push(_gen2TokenIds[i]);
+			bags[_bagId].gen2Rarities.push(_gen2Rarities[i]);
+		}
+				
+		bags[_bagId].lastStateChange = block.timestamp;
+		emit AddBagInfo(msg.sender, _bagId);
+	}
 
-		if(gen2TokenCount != 0) {
-			for(uint256 i = 0; i < gen2TokenCount; i++ ) {
-				uint256 bagId = gen2BagIds[_gen2TokenIds[i]];
-				if(bagId == 0) continue;
-				require(msg.sender == ownerOf(bagId), "Not bag owner");
+	function unstake(
+		uint256[] memory _bagIds,
+		genTokenId[] memory _genTokenIds,
+		gen2TokenId[] memory _gen2TokenIds
+	) external nonReentrant {
+		uint256 totalBags = _bagIds.length;
+		require(totalBags == _genTokenIds.length);
+		require(totalBags == _gen2TokenIds.length);
+		for (uint256 i = 0; i < totalBags; i++) {
+			uint256 _bagId = _bagIds[i];
+			require(bags[_bagId].genTokenId != 0 && bags[_bagId].gen2TokenIds.length != 0, "this bag does not exist");
+			require(_genTokenIds[i].id < genCap || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
+			require(msg.sender == ownerOf(_bagId), "this bag does not belong to you");
+			uint256 _unclaimed = _calculateStakeReward(_bagId);
+			bags[_bagId].unclaimedBalance += _unclaimed;
 
-				uint256 bagGen2TokenCount = stakeInfos[bagId].gen2TokenIds.length;
-				for(uint256 j = 0; j < bagGen2TokenCount; j++ ) {
-					if(stakeInfos[bagId].gen2TokenIds[j] == _gen2TokenIds[i]) {
-						gen2.safeTransferFrom(address(this), msg.sender, _gen2TokenIds[i]);
-						uint256 getReward = _calculateStakeReward(bagId) - claimBags[bagId];
-						if(getReward > 0) {
-							rewardsToken.mint(msg.sender, getReward);
-							claimBags[bagId] += getReward;
+			if (_genTokenIds[i].id < genCap) {
+				require(genBagIds[_genTokenIds[i].id] == _bagId, "genesis not found in the bag");
+				genesis.safeTransferFrom(address(this), msg.sender, _genTokenIds[i].id);
+				bags[_bagIds[i]].genTokenId = genCap;
+				bags[_bagIds[i]].genRarity = 0;
+				delete genBagIds[_genTokenIds[i].id];
+			}
+
+			uint256 _gen2TokenCount = _gen2TokenIds[i].ids.length;
+			if (_gen2TokenCount != 0) {
+				uint256 _count = bags[_bagId].gen2TokenIds.length;
+				require(_count >= _gen2TokenCount, "too many to unstake");
+				for (uint256 j = 0; j < _gen2TokenCount; j++) {
+					require(gen2BagIds[_gen2TokenIds[i].ids[j]] == _bagId, "gen2 not found in the bag");
+					for (uint256 k = 0; k < _count; k++){
+						if (_gen2TokenIds[i].ids[j] == bags[_bagId].gen2TokenIds[k]) {
+							gen2.safeTransferFrom(address(this), msg.sender, _gen2TokenIds[i].ids[j]);
+							bags[_bagId].gen2TokenIds[k] = bags[_bagId].gen2TokenIds[_count-1];
+							bags[_bagId].gen2Rarities[k] = bags[_bagId].gen2Rarities[_count-1];
+							bags[_bagId].gen2TokenIds.pop();
+							bags[_bagId].gen2Rarities.pop();
+							_count--;
+							delete gen2BagIds[_gen2TokenIds[i].ids[j]];
 						}
-
-						stakeInfos[bagId].reward = 0;
-						stakeInfos[bagId].since = block.timestamp;
-
-						emit UnStaked(msg.sender, bagId, getReward);
-
-						delete claimBags[bagId];
-						delete gen2BagIds[_gen2TokenIds[i]];
-
-						if(j == 2) {
-							stakeInfos[bagId].gen2TokenIds.pop();
-							stakeInfos[bagId].gen2Rarities.pop();
-						}
-						else {
-							stakeInfos[bagId].gen2TokenIds[j] = stakeInfos[bagId].gen2TokenIds[bagGen2TokenCount - 1];
-							stakeInfos[bagId].gen2TokenIds.pop();
-							stakeInfos[bagId].gen2Rarities[j] = stakeInfos[bagId].gen2Rarities[bagGen2TokenCount - 1];
-							stakeInfos[bagId].gen2Rarities.pop();
-							bagGen2TokenCount--;
-						}
-
-						if(bagGen2TokenCount == 0 && stakeInfos[bagId].genTokenId == 0) {
-							delete stakeInfos[bagId];
-							delete claimBags[bagId];
-							_burn(bagId);
-						}
-						break;
-					}
+					}  
 				}
+
+				if (bags[_bagId].genTokenId >= genCap && _count == 0) {
+					delete bags[_bagId];
+					_burn(_bagId);
+					break;
+				}
+				bags[_bagId].lastStateChange = block.timestamp;
 			}
-		}
+		}                        
 	}
 
-	function claim(uint256 _bagId, uint256 _amount) external nonReentrant {
-		require(msg.sender == ownerOf(_bagId), "Not owner");
-		uint256  stakeReward = _calculateStakeReward(_bagId) - claimBags[_bagId];
-		require(_amount != 0, "Invalid amount");
-		require(stakeInfos[_bagId].gen2TokenIds.length != 0, "No stake");
-		require(stakeReward >= _amount, "Cannot claim more than you own");
-		claimBags[_bagId] += _amount;
-		rewardsToken.mint(msg.sender, _amount);
-		emit Claimed(msg.sender, _bagId, _amount);
-	}
-
-	function claimAll() external nonReentrant {
-		uint256 _amount = getStakeReward();
-		require(_amount != 0, "Invalid amount");
-		rewardsToken.mint(msg.sender, _amount);
-
-		uint256 bags = balanceOf(msg.sender);
-		for(uint256 i = 0; i < bags; i++ ) {
+	function claim() external nonReentrant {
+		uint256 _totalBags = balanceOf(msg.sender);
+		uint256 _totalAmount = 0;
+		uint256 _now = block.timestamp;
+			
+		for (uint256 i = 0; i < _totalBags; i++){
 			uint256 bagId = tokenByIndex(i);
-			if(stakeInfos[bagId].since > 0) {
-				claimBags[bagId] = _calculateStakeReward(bagId);
+			uint256 _unclaimed = _calculateStakeReward(bagId);
+			bags[bagId].unclaimedBalance += _unclaimed;
+			if (bags[bagId].unclaimedBalance != 0){
+				_totalAmount += bags[bagId].unclaimedBalance;
+				emit Claimed(msg.sender, bagId, bags[bagId].unclaimedBalance);
+				bags[bagId].unclaimedBalance = 0;
+				bags[bagId].lastStateChange = _now;
 			}
 		}
-
-		emit ClaimedAll(msg.sender, _amount);
+		require(_totalAmount != 0, "nothing to claim");
+		rewardsToken.mint(msg.sender, _totalAmount);
 	}
 
 	function _calculateStakeReward(uint256 _bagId) internal view returns (uint256) {
 		uint256 total = 0;
-		if(stakeInfos[_bagId].since == 0) {
+		if(bags[_bagId].lastStateChange == 0) {
 			return total;
 		}
-		uint256 period = ((block.timestamp - stakeInfos[_bagId].since) / 1 days);
+		uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 1 days);
 		uint256 baseEarning = 0;
-		uint256 gen2TokenLen = stakeInfos[_bagId].gen2TokenIds.length;
+		uint256 gen2TokenLen = bags[_bagId].gen2TokenIds.length;
 		uint256 genesisRateMultiplier = 1;
-		uint256 reward = stakeInfos[_bagId].reward;
-
 		
-		if(stakeInfos[_bagId].genRarity != 0) {
-			genesisRateMultiplier = genMultipliers[stakeInfos[_bagId].genRarity];
+		if(bags[_bagId].genRarity != 0) {
+			genesisRateMultiplier = genMultipliers[bags[_bagId].genRarity];
 		}
 
-		for(uint256 i = 0; i < stakeInfos[_bagId].gen2Rarities.length; i++ ) {
-			baseEarning += gen2Earnings[stakeInfos[_bagId].gen2Rarities[i]];
+		for(uint256 i = 0; i < bags[_bagId].gen2Rarities.length; i++ ) {
+			baseEarning += gen2Earnings[bags[_bagId].gen2Rarities[i]];
 		}
 
 		if(gen2TokenLen <= 1) {
-			total = baseEarning * genesisRateMultiplier * period + reward;
+			total = baseEarning * genesisRateMultiplier * period;
 		}
 		else if(gen2TokenLen == 2) {
-			total = (baseEarning * genesisRateMultiplier * period) * 21 / 20 + reward;
+			total = (baseEarning * genesisRateMultiplier * period) * 21 / 20;
 		}
 		else if(gen2TokenLen == 3) {
-			total = (baseEarning * genesisRateMultiplier * period) * 23 / 20 + reward;
+			total = (baseEarning * genesisRateMultiplier * period) * 23 / 20;
 		} 
 
     return total;
-  }
-
-	function getStakeReward() public view returns (uint256) {
-		uint256 bags = balanceOf(msg.sender);
-		uint256 totalReward = 0;
-		for(uint256 i = 0; i < bags; i++ ) {
-			uint256 bagId = tokenByIndex(i);
-			if(stakeInfos[bagId].since > 0) {
-				totalReward += _calculateStakeReward(bagId) - claimBags[bagId];
-			}
-		}
-
-		return totalReward;
   }
 
 	function modifySigner(address _signer) external onlyOwner {

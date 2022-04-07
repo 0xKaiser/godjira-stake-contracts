@@ -55,19 +55,20 @@ describe('Staking', () => {
     await this.gen2.connect(this.users[1]).mint(10)
   })
 
-  it('stake function succeeds', async () => {
+  it('stake function succeeds : addNewBag', async () => {
     await advanceTime(5 * 3600 * 24)
     // const whitelist = new Whitelist({ contract: this.stakingV1, signer: this.users[1] })
     // const whitelisted = await whitelist.createWhiteList(this.users[1].address, 10, 1, [1, 2, 3], [1, 2, 3])
 
-    const stakeInfo =
-    [  {
+    const bags =
+    [  
+      {
         genTokenId: 10,
         genRarity: 1,
         gen2TokenIds: [1,2,3],
         gen2Rarities: [1,2,3],
-        reward: 0,
-        since: 0
+        unclaimedBalance: 0,
+        lastStateChange: 0
       }
     ]
 
@@ -78,56 +79,45 @@ describe('Staking', () => {
     await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 2)
     await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 3)
     
-    
-    const tx = await this.proxyUpgraded.connect(this.users[1]).stake(stakeInfo)
+    const tx = await this.proxyUpgraded.connect(this.users[1]).stake(bags, [true], [0])
     const rc = await tx.wait()
     const event = rc.events.find(event => event.event === 'Staked')
-    const getStakingInfo = await this.proxyUpgraded.stakeInfos(event.args.bagId)
-    expect(ethers.BigNumber.from("10")).to.equal(getStakingInfo.genTokenId)
+    const getBag = await this.proxyUpgraded.bags(event.args.bagId)
+    expect(ethers.BigNumber.from("10")).to.equal(getBag.genTokenId)
   })
 
   it('claim function succeeds', async () => {
     await advanceTime(5 * 3600 * 24)
     
-    await this.proxyUpgraded.connect(this.users[1]).claim(1, 100)
-    const balance = await this.jiraToken.balanceOf(this.users[1].address)
-    expect(100).to.equal(balance)
-
-    await this.proxyUpgraded.connect(this.users[1]).claim(1, 10)
-    const balance1 = await this.jiraToken.balanceOf(this.users[1].address)
-    expect(110).to.equal(balance1)
-    
-    const getReward = await this.proxyUpgraded.connect(this.users[1]).getStakeReward()
-    expect(97).to.equal(getReward)
-  })
-
-  it('claimAll function succeeds', async () => {
-    await this.proxyUpgraded.connect(this.users[1]).claimAll()
+    await this.proxyUpgraded.connect(this.users[1]).claim()
     const balance = await this.jiraToken.balanceOf(this.users[1].address)
     expect(207).to.equal(balance)
-
-    const getReward = await this.proxyUpgraded.connect(this.users[2]).getStakeReward()
-    expect(0).to.equal(getReward)
   })
 
-  it('unStake function succeeds', async () => {
-    await this.proxyUpgraded.connect(this.users[1]).unStake([10], [1, 2, 3, 1])
+  it('unstake function succeeds', async () => {
+    await this.proxyUpgraded.connect(this.users[1]).unstake(
+      [1],
+      [{
+        id: 10
+      }],
+      [{
+        ids: [1, 2, 3]
+      }]
+    )
     const owner = await this.gen2.ownerOf(1)
     expect(this.users[1].address).to.equal(owner)
-
-    const balance = await this.jiraToken.balanceOf(this.users[1].address)
-    expect(207).to.equal(balance)
   })
 
   it('addBagInfo function succeeds', async () => {
-    const stakeInfo =
-    [  {
+    const bags =
+    [  
+      {
         genTokenId: 20,
         genRarity: 2,
         gen2TokenIds: [4],
         gen2Rarities: [3],
-        reward: 0,
-        since: 0
+        unclaimedBalance: 0,
+        lastStateChange: 0
       }
     ]
 
@@ -136,23 +126,24 @@ describe('Staking', () => {
     await this.genesis.connect(this.users[1]).approve(this.proxyUpgraded.address, 20)
     await this.gen2.connect(this.users[1]).approve(this.proxyUpgraded.address, 4)
     
-    await this.proxyUpgraded.connect(this.users[1]).stake(stakeInfo)
+    await this.proxyUpgraded.connect(this.users[1]).stake(bags, [true], [0])
 
     await advanceTime(5 * 3600 * 24)
   
-    const addBagInfos = [
+    const addBagInfo = [
       {
-        bagId: 2,
-		    genTokenId: 10,
-		    genRarity: 2,
-		    gen2TokenIds: [5, 6],
-		    gen2Rarities: [1, 2]
+        genTokenId: 0,
+        genRarity: 0,
+        gen2TokenIds: [5, 6],
+        gen2Rarities: [1, 2],
+        unclaimedBalance: 0,
+        lastStateChange: 0
       }
     ]
-    await this.proxyUpgraded.connect(this.users[1]).addBagInfo(addBagInfos)
+    await this.proxyUpgraded.connect(this.users[1]).stake(addBagInfo, [false], [2])
 
     await advanceTime(5 * 3600 * 24)
-    await this.proxyUpgraded.connect(this.users[1]).claimAll()
+    await this.proxyUpgraded.connect(this.users[1]).claim()
     const balance = await this.jiraToken.balanceOf(this.users[1].address)
 
     expect(637).to.equal(balance)
