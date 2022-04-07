@@ -23,7 +23,6 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 
-const KOVAN_KEY = process.env.KOVAN_KEY || 'sample-kovan-key'
 const MNEMONIC = process.env.MNEMONIC || 'sample-mnemonic'
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || 'etherscan-api-key'
 
@@ -41,23 +40,19 @@ module.exports = {
     deployer: 0,
   },
   networks: {
-    kovan: {
-      url: `https://eth-kovan.alchemyapi.io/v2/${KOVAN_KEY}`,
+    rinkeby: {
+      url: `https://rinkeby.infura.io/v3/4e4a4359db564bcf865aae6ece530d13`,
       accounts: {
         mnemonic: MNEMONIC
       }
     },
-    ganache: {
-      url: "http://127.0.0.1:8545",
+    mainnet: {
+      url: `https://mainnet.infura.io/v3/4e4a4359db564bcf865aae6ece530d13`,
       accounts: {
-        mnemonic: MNEMONIC,
+        mnemonic: MNEMONIC
       }
     }
   },
-  // mocha: {
-    // reporter: 'eth-gas-reporter',
-    // reporterOptions : { ... } // See options below
-  // },
   etherscan: {
     apiKey: ETHERSCAN_API_KEY
   }

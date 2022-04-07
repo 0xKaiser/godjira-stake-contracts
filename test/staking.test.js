@@ -16,7 +16,7 @@ describe('Staking', () => {
     const mockNFT = await ethers.getContractFactory('MockNFT')
 
     this.mockNFT = await mockNFT.deploy()
-    this.genesis = await genesis.deploy("genesis", "genesis", this.tokenUri, this.mockNFT.address)
+    this.genesis = await genesis.deploy("genesis", "genesis", this.tokenUri)
     
     const gen2 = await ethers.getContractFactory('Gen2')
     this.gen2 = await gen2.deploy("gen2", "gen2", this.tokenUri)
@@ -45,20 +45,13 @@ describe('Staking', () => {
 
     this.jiraToken.connect(this.deployer).modifyStakingOwner(this.proxyUpgraded.address)
 
-    await this.genesis.connect(this.deployer).mint([10, 20])
-    await this.mockNFT.connect(this.deployer).mint(this.users[1].address, 10)
-    await this.mockNFT.connect(this.deployer).mint(this.users[1].address, 20)
-
-    await this.mockNFT.connect(this.users[1]).setApprovalForAll(this.genesis.address, true)
-    await this.genesis.connect(this.users[1]).claim([10, 20])
+    await this.genesis.connect(this.users[1]).mint([10, 20])
 
     await this.gen2.connect(this.users[1]).mint(10)
   })
 
   it('stake function succeeds : addNewBag', async () => {
     await advanceTime(5 * 3600 * 24)
-    // const whitelist = new Whitelist({ contract: this.stakingV1, signer: this.users[1] })
-    // const whitelisted = await whitelist.createWhiteList(this.users[1].address, 10, 1, [1, 2, 3], [1, 2, 3])
 
     const bags =
     [  

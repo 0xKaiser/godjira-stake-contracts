@@ -243,7 +243,8 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 
 	function _calculateStakeReward(uint256 _bagId) internal view returns (uint256) {
 		uint256 total = 0;
-		uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 1 days);
+		// uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 1 days);
+		uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 10 minutes);
 		uint256 baseEarning = 0;
 		uint256 gen2TokenLen = bags[_bagId].gen2TokenIds.length;
 		uint256 genesisRateMultiplier = 1;
