@@ -51,8 +51,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	mapping(uint256 => uint256) public claimBags;
 	mapping(uint256 => uint256) public genMultipliers;
 	mapping(uint256 => uint256) public gen2Earnings;
-	mapping(uint256 => uint256) public gen2RateMultipliers;
-
 
 	event Staked(address indexed user, uint256 bagId);
 	event UnStaked(address indexed user, uint256 bagId, uint256 reward);
@@ -73,10 +71,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		gen2Earnings[1] = 4; // Common
 		gen2Earnings[2] = 6; // Rare
 		gen2Earnings[3] = 8; // Legendary
-
-		gen2RateMultipliers[1] = 1;
-		gen2RateMultipliers[2] = uint256(21) / uint256(20);
-		gen2RateMultipliers[3] = uint256(23) / uint256(20);
 	}
 
 	function stake(
@@ -187,8 +181,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 			require(msg.sender == ownerOf(_bagId), "this bag does not belong to you");
 			require(_isValidGenesisId(_genTokenIds[i].id) || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
 
-			// require(bags[_bagId].genTokenId != 0 && bags[_bagId].gen2TokenIds.length != 0, "this bag does not exist");
-			// require(_genTokenIds[i].id < genCap || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
 			uint256 _unclaimed = _calculateStakeReward(_bagId);
 			bags[_bagId].unclaimedBalance += _unclaimed;
 
@@ -251,9 +243,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 
 	function _calculateStakeReward(uint256 _bagId) internal view returns (uint256) {
 		uint256 total = 0;
-		// if(bags[_bagId].lastStateChange == 0) {
-		// 	return total;
-		// }
 		uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 1 days);
 		uint256 baseEarning = 0;
 		uint256 gen2TokenLen = bags[_bagId].gen2TokenIds.length;
