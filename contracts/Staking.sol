@@ -39,8 +39,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 	}
 
 	address private _designatedSigner;
-	uint256 private genCap;
-	uint256 private gen2Cap;
 
 	/// @dev bagId -> Stake info
   mapping(uint256 => Bag) public bags;
@@ -79,9 +77,6 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		gen2RateMultipliers[1] = 1;
 		gen2RateMultipliers[2] = uint256(21) / uint256(20);
 		gen2RateMultipliers[3] = uint256(23) / uint256(20);
-
-		genCap = 334;
-		gen2Cap = 3333;
 	}
 
 	function stake(
@@ -115,14 +110,16 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		bagIds.increment();
 		uint256 bagId = bagIds.current();
 				
-		if(_genTokenId != 0 && _genTokenId < genCap) {
+		if(_isValidGenesisId(_genTokenId)) {
 			require(msg.sender == genesis.ownerOf(_genTokenId), "not owner of the genesis");
+			require(genBagIds[_genTokenId] == 0, "genesis is already staked");
 			genesis.safeTransferFrom(msg.sender, address(this), _genTokenId);
 			genBagIds[_genTokenId] = bagId;
 		}
 
 		for (uint256 i = 0; i < _gen2TokenCount; i++) {
-			require(msg.sender == gen2.ownerOf(_gen2TokenIds[i]), "not owner of the gen2");
+			require(msg.sender == gen2.ownerOf(_gen2TokenIds[i]), "you don't own this gen2");
+			require(gen2BagIds[_gen2TokenIds[i]] == 0, "gen2 is already staked");
 			gen2.safeTransferFrom(msg.sender, address(this), _gen2TokenIds[i]);
 			gen2BagIds[_gen2TokenIds[i]] = bagId;
 		}
@@ -147,24 +144,30 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		uint256[] memory _gen2TokenIds,
 		uint256[] memory _gen2Rarities
 	) internal {
+		require(msg.sender == ownerOf(_bagId), "you cannot add to this bag");
+
 		uint256 currentGen2Count = bags[_bagId].gen2TokenIds.length;
 		uint256 _gen2Count = _gen2TokenIds.length;
 		
+		require(_isValidGenesisId(_genTokenId) || _gen2Count != 0, "nothing to add");
 		require((currentGen2Count + _gen2Count) <= 3, "can't add more than 3 gen2s");
 		
 		uint256 _unclaimed = _calculateStakeReward(_bagId);
 		bags[_bagId].unclaimedBalance += _unclaimed;
-		if (_genTokenId < genCap && _genTokenId != 0) {
-			require(bags[_bagId].genTokenId >= genCap || bags[_bagId].genTokenId == 0, "bag already has a genesis");
+		if (_isValidGenesisId(_genTokenId)) {
+			require(genBagIds[_genTokenId] == 0, "genesis is already staked");
+			require(_isValidGenesisId(bags[_bagId].genTokenId) != true, "bag already has a genesis");
 			bags[_bagId].genTokenId = _genTokenId;
 			bags[_bagId].genRarity = _genTokenRarity;
+			genBagIds[_genTokenId] = _bagId;
 		}
 				
 		for (uint256 i = 0; i < _gen2Count; i++) {
-			require(gen2BagIds[_gen2TokenIds[i]] == 0);
-			require(_gen2TokenIds[i] < gen2Cap);
+			require(_isValidGen2Id(_gen2TokenIds[i]), "invalid gen2 token");
+			require(gen2BagIds[_gen2TokenIds[i]] == 0, "gen2 is already staked");
 			bags[_bagId].gen2TokenIds.push(_gen2TokenIds[i]);
 			bags[_bagId].gen2Rarities.push(_gen2Rarities[i]);
+			gen2BagIds[_gen2TokenIds[i]] = _bagId;
 		}
 				
 		bags[_bagId].lastStateChange = block.timestamp;
@@ -181,16 +184,18 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 		require(totalBags == _gen2TokenIds.length);
 		for (uint256 i = 0; i < totalBags; i++) {
 			uint256 _bagId = _bagIds[i];
-			require(bags[_bagId].genTokenId != 0 && bags[_bagId].gen2TokenIds.length != 0, "this bag does not exist");
-			require(_genTokenIds[i].id < genCap || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
 			require(msg.sender == ownerOf(_bagId), "this bag does not belong to you");
+			require(_isValidGenesisId(_genTokenIds[i].id) || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
+
+			// require(bags[_bagId].genTokenId != 0 && bags[_bagId].gen2TokenIds.length != 0, "this bag does not exist");
+			// require(_genTokenIds[i].id < genCap || _gen2TokenIds[i].ids.length != 0, "nothing to unstake");
 			uint256 _unclaimed = _calculateStakeReward(_bagId);
 			bags[_bagId].unclaimedBalance += _unclaimed;
 
-			if (_genTokenIds[i].id < genCap) {
+			if (_isValidGenesisId(_genTokenIds[i].id)) {
 				require(genBagIds[_genTokenIds[i].id] == _bagId, "genesis not found in the bag");
 				genesis.safeTransferFrom(address(this), msg.sender, _genTokenIds[i].id);
-				bags[_bagIds[i]].genTokenId = genCap;
+				bags[_bagIds[i]].genTokenId = 0;
 				bags[_bagIds[i]].genRarity = 0;
 				delete genBagIds[_genTokenIds[i].id];
 			}
@@ -214,7 +219,7 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 					}  
 				}
 
-				if (bags[_bagId].genTokenId >= genCap && _count == 0) {
+				if (!_isValidGenesisId(bags[_bagId].genTokenId) && _count == 0) {
 					delete bags[_bagId];
 					_burn(_bagId);
 					break;
@@ -246,9 +251,9 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 
 	function _calculateStakeReward(uint256 _bagId) internal view returns (uint256) {
 		uint256 total = 0;
-		if(bags[_bagId].lastStateChange == 0) {
-			return total;
-		}
+		// if(bags[_bagId].lastStateChange == 0) {
+		// 	return total;
+		// }
 		uint256 period = ((block.timestamp - bags[_bagId].lastStateChange) / 1 days);
 		uint256 baseEarning = 0;
 		uint256 gen2TokenLen = bags[_bagId].gen2TokenIds.length;
@@ -274,6 +279,24 @@ contract Staking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeabl
 
     return total;
   }
+
+	function _isValidGenesisId(uint256 id) internal pure returns(bool) {
+		if (id > 0 && id < 334) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	function _isValidGen2Id(uint256 id) internal pure returns(bool) {
+		if (id < 3333) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
 
 	function modifySigner(address _signer) external onlyOwner {
 		_designatedSigner = _signer;
