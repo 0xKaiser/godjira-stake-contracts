@@ -8,11 +8,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract JiraToken is ERC20, Ownable {
     using SafeMath for uint256;
 
-    address staking; //TODO : Set Address
+    address public staking; //TODO : Set Address
     uint8 public _decimals = 18;
     string public _name = 'Jira Token';
     string public _symbol = 'JIRA';
-    uint256 CAP = 2 * 10 ** 8 * 1e18;
+    uint256 TOTAL_CAP = 2 * 10 ** 8 * 1e18;
+    uint256 STAKING_CAP = 10 ** 7 * 1e18;
+    uint256 stakingSupply = 0;
 
     constructor() ERC20(_name, _symbol) {
 
@@ -25,18 +27,33 @@ contract JiraToken is ERC20, Ownable {
     
     function mint(address _to, uint256 _amount) external onlyStaking {
         require(_amount != 0, "Invalid amount");
-        require(totalSupply() + _amount <= CAP, "Max limit");
+        require(stakingSupply + _amount <= STAKING_CAP, "Max limit");
+	    stakingSupply += _amount;
         _mint(_to, _amount);
     }
 
     function mintOnlyOwner(address _to, uint256 _amount) external onlyOwner {
         require(_amount != 0, "Invalid amount");
-        require(totalSupply() + _amount <= CAP, "Max limit");
+        require(totalSupply() + _amount <= TOTAL_CAP, "Max limit");
         _mint(_to, _amount);
+    }
+
+    function modifyTotalCap(uint256 _cap) external onlyOwner {
+	require(_cap > totalSupply(), "total supply already exceeds");
+	TOTAL_CAP = _cap;
+    }
+
+    function modifyStakingCap(uint256 _cap) external onlyOwner {
+	require(_cap > stakeSupply(), "staking supply already exceeds");
+	STAKING_CAP = _cap;
     }
 
     function modifyStakingOwner(address _staking) external onlyOwner {
         staking = _staking;
+    }
+
+    function stakeSupply() public view returns (uint256) {
+	return stakingSupply;
     }
 
     /**
